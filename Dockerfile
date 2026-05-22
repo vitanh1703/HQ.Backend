@@ -1,23 +1,21 @@
-# Stage 1: Build dự án
+# Stage 1: Build ứng dụng bằng SDK 8.0
 FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
 WORKDIR /src
 
-# Copy file solution và các file project vào để restore dependencies trước
-COPY ["HQ.Backend.sln", "./"]
-COPY ["HQ.Backend/HQ.Backend.csproj", "HQ.Backend/"]
-RUN dotnet restore
-
-# Copy toàn bộ mã nguồn còn lại vào và build
+# Copy toàn bộ mã nguồn vào container
 COPY . .
-WORKDIR "/src/HQ.Backend"
-RUN dotnet publish -c Release -o /app/publish
 
-# Stage 2: Chạy ứng dụng
+# Đi vào đúng thư mục con nơi chứa file .csproj để thực hiện restore và publish
+WORKDIR "/src/HQ.Backend/HQ.Backend"
+RUN dotnet restore "HQ.Backend.csproj"
+RUN dotnet publish "HQ.Backend.csproj" -c Release -o /app/publish
+
+# Stage 2: Chạy ứng dụng bằng Runtime 8.0
 FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS final
 WORKDIR /app
 COPY --from=build /app/publish .
 
-# Railway tự động cấp port qua biến môi trường PORT, cấu hình .NET lắng nghe port đó
+# Cấu hình cổng lắng nghe theo biến môi trường PORT của Railway
 ENV ASPNETCORE_URLS=http://+:8080
 EXPOSE 8080
 
