@@ -54,15 +54,16 @@ namespace HQ.Backend.Controllers
 
             _registerOtpStorage[user.Email] = (otp, DateTime.Now.AddMinutes(5), 0, user);
 
-            // BẬT LẠI LỆNH GỬI MAIL THẬT:
-            bool isSent = await SendEmailAsync(user.Email, "Mã OTP đăng ký tài khoản - H&Q Store", 
-                $"Xin chào,\n\nMã OTP để đăng ký tài khoản của bạn là: {otp}\n\nMã này có hiệu lực trong 5 phút. Vui lòng không chia sẻ mã này với bất kỳ ai.");
+            // XÓA BỎ HOÀN TOÀN DÒNG: bool isSent = true; VÀ BẬT LẠI DÒNG DƯỚI NÀY:
+            bool isSent = await SendEmailAsync(user.Email, "[H&Q Store] Mã OTP Xác Thực Đăng Ký Tài Khoản", otp);
 
-            // Giữ nguyên dòng in log này phòng khi bạn muốn check nhanh không cần mở hòm thư
+            // In log đen để bạn kiểm soát hệ thống trên Railway
             Console.WriteLine($"====== [DỰ ÁN H&Q STORE] OTP CỦA {user.Email} LÀ: {otp} ======");
 
             if (isSent) 
-                return Ok(new { message = "Mã OTP đã được gửi!" });
+            {
+                return Ok(new { message = "Mã OTP đã được gửi thật qua API Brevo!" });
+            }
             
             return StatusCode(500, new { message = "Gửi mail thất bại từ Mail Server Brevo API!" });
         }
