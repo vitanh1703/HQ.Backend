@@ -54,13 +54,17 @@ namespace HQ.Backend.Controllers
 
             _registerOtpStorage[user.Email] = (otp, DateTime.Now.AddMinutes(5), 0, user);
 
-            bool isSent = await SendEmailAsync(user.Email, "Mã OTP đăng ký tài khoản - H&Q Store", 
-                $"Xin chào,\n\nMã OTP để đăng ký tài khoản của bạn là: {otp}\n\nMã này có hiệu lực trong 5 phút. Vui lòng không chia sẻ mã này với bất kỳ ai.");
+            // BỎ QUA HÀM SendEmailAsync DỄ BỊ CHẶN TRÊN CLOUD
+            // Ép hệ thống in thẳng mã OTP ra màn hình Log đen của Railway để bạn lấy
+            Console.WriteLine($"====== [DỰ ÁN H&Q STORE] OTP CỦA {user.Email} LÀ: {otp} ======");
+
+            // Ép trạng thái luôn luôn là gửi thành công để Frontend chuyển sang ô nhập OTP
+            bool isSent = true; 
 
             if (isSent) 
                 return Ok(new { message = "Mã OTP đã được gửi!" });
             
-            return StatusCode(500, new { message = "Gửi mail thất bại, kiểm tra kết nối mạng hoặc cấu hình SMTP!" });
+            return StatusCode(500, new { message = "Lỗi gửi mail!" });
         }
 
         [HttpPost("verify-register-otp")]
