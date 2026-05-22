@@ -161,6 +161,7 @@ public class Service
     public int OrderIndex { get; set; } 
 }
 
+[Table("promotions")]
 public class Promotion
 {
     public int Id { get; set; }
