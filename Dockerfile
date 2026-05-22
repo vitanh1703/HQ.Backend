@@ -1,15 +1,17 @@
-# Stage 1: Build dự án
+# Stage 1: Build dự án bằng SDK 8.0
 FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
 WORKDIR /src
 
-# Copy toàn bộ file vào Docker
+# Copy toàn bộ mã nguồn vào trong container
 COPY . .
 
-# Thực hiện restore và publish từ thư mục gốc
-RUN dotnet restore "HQ.Backend/HQ.Backend/HQ.Backend.csproj"
-RUN dotnet publish "HQ.Backend/HQ.Backend/HQ.Backend.csproj" -c Release -o /app/publish
+# MẸO QUAN TRỌNG: Di chuyển vào thư mục chứa file .csproj một cách tự động
+# Lệnh này sẽ tìm file .csproj bất kể nó nằm sâu ở tầng nào, rồi nhảy vào thư mục đó.
+RUN cd $(dirname $(find . -name "*.csproj" -print -quit)) && \
+    dotnet restore && \
+    dotnet publish -c Release -o /app/publish
 
-# Stage 2: Chạy ứng dụng
+# Stage 2: Chạy ứng dụng bằng Runtime 8.0
 FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS final
 WORKDIR /app
 COPY --from=build /app/publish .
@@ -18,5 +20,5 @@ COPY --from=build /app/publish .
 ENV ASPNETCORE_URLS=http://+:8080
 EXPOSE 8080
 
-# Chỉ định đích danh file dll chạy trực tiếp (Không dùng lệnh shell ls/cut nữa)
+# Chạy file .dll chính (Tên file .dll sinh ra sẽ là HQ.Backend.dll)
 ENTRYPOINT ["dotnet", "HQ.Backend.dll"]
