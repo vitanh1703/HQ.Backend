@@ -151,7 +151,7 @@ namespace HQ.Backend.Controllers
             {
                 var settings = new GoogleJsonWebSignature.ValidationSettings()
                 {
-                    Audience = new List<string> { "249381559845-1s30c3kjmaeic2v35il5vjqir9930pq2.apps.googleusercontent.com" }
+                    Audience = new List<string> { "991505623424-nku31al8k2k1ajf7ad8l4b2piuft8ccf.apps.googleusercontent.com" }
                 };
                 var payload = await GoogleJsonWebSignature.ValidateAsync(request.Token, settings);
                 var user = await _context.Users.FirstOrDefaultAsync(u => u.Email == payload.Email);
