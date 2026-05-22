@@ -15,8 +15,6 @@ namespace HQ.Backend.Controllers
     {
         private readonly AppDbContext _context;
         
-        // Dùng ConcurrentDictionary để lưu trữ OTP tạm thời an toàn trong môi trường đa luồng
-        // Key: Email -> Value: (Otp, ExpiryTime, FailedAttempts)
         private static readonly ConcurrentDictionary<string, (string Otp, DateTime Expiry, int FailedAttempts)> _otpStorage = new();
 
         public PasswordResetController(AppDbContext context)
@@ -31,13 +29,11 @@ namespace HQ.Backend.Controllers
         [HttpPost("forgot-password")]
         public async Task<IActionResult> ForgotPassword([FromBody] ForgotPasswordDto request)
         {
-            // Kiểm tra xem email có tồn tại trong cơ sở dữ liệu không
             var user = await _context.Users.FirstOrDefaultAsync(u => u.Email == request.Email);
             
             if (user == null)
                 return NotFound(new { message = "Email này không tồn tại trong hệ thống!" });
 
-            // Chặn những tài khoản đăng ký qua Google
             if (user.AuthProvider == "google")
                 return BadRequest(new { message = "Tài khoản này được đăng nhập bằng Google, không thể đổi mật khẩu qua hệ thống!" });
 
@@ -45,13 +41,14 @@ namespace HQ.Backend.Controllers
             // Lưu OTP có thời hạn 5 phút
             _otpStorage[request.Email] = (otp, DateTime.Now.AddMinutes(5), 0);
 
-            bool isSent = await SendEmailAsync(request.Email, "Mã OTP đặt lại mật khẩu - H&Q Store", 
-                $"Xin chào,\n\nMã OTP để đặt lại mật khẩu của bạn là: {otp}\n\nMã này có hiệu lực trong 5 phút. Vui lòng không chia sẻ mã này với bất kỳ ai.");
+            bool isSent = await SendEmailAsync(request.Email, "Mã OTP đặt lại mật khẩu - H&Q Store", otp);
+
+            Console.WriteLine($"====== [QUÊN MẬT KHẨU H&Q] OTP CỦA {request.Email} LÀ: {otp} ======");
 
             if (isSent) 
-                return Ok(new { message = "Mã OTP đã được gửi!" });
+                return Ok(new { message = "Mã OTP đã được gửi thật qua API Brevo!" });
             
-            return StatusCode(500, new { message = "Gửi mail thất bại, kiểm tra kết nối mạng hoặc cấu hình SMTP!" });
+            return StatusCode(500, new { message = "Gửi mail thất bại từ Mail Server Brevo API!" });
         }
 
         [HttpPost("verify-otp")]
@@ -84,7 +81,6 @@ namespace HQ.Backend.Controllers
         [HttpPost("reset-password")]
         public async Task<IActionResult> ResetPassword([FromBody] ResetPasswordDto request)
         {
-            // Bước này cần phải xác minh lại để tránh trường hợp gọi thẳng API reset-password bỏ qua bước Verify
             if (!_otpStorage.TryGetValue(request.Email, out var data) || data.Otp != request.Otp)
                 return BadRequest(new { message = "Xác thực không hợp lệ hoặc OTP đã hết hạn!" });
 
@@ -92,12 +88,10 @@ namespace HQ.Backend.Controllers
             if (user == null)
                 return NotFound(new { message = "Không tìm thấy thông tin người dùng." });
 
-            // Mã hoá mật khẩu mới. Dựa vào Database, hệ thống bạn dùng Bcrypt
             user.Password = BCrypt.Net.BCrypt.HashPassword(request.NewPassword);
             
             await _context.SaveChangesAsync();
             
-            // Xóa bộ nhớ tạm sau khi đổi thành công
             _otpStorage.TryRemove(request.Email, out _);
 
             return Ok(new { message = "Mật khẩu đã được cập nhật thành công!" });
@@ -107,26 +101,39 @@ namespace HQ.Backend.Controllers
         {
             try
             {
-                using (SmtpClient smtp = new SmtpClient("smtp.gmail.com", 587))
+                using (var client = new HttpClient())
                 {
-                    smtp.Credentials = new NetworkCredential("diema448@gmail.com", "gyykaypfhslrkvew");
-                    smtp.EnableSsl = true;
+                    client.BaseAddress = new Uri("https://api.brevo.com/v3/");
+                    
+                    client.DefaultRequestHeaders.Add("api-key", "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");
+                    client.DefaultRequestHeaders.Accept.Add(new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/json"));
 
-                    MailMessage mail = new MailMessage
+                    var emailData = new
                     {
-                        From = new MailAddress("diema448@gmail.com", "H&Q Store"),
-                        Subject = subject,
-                        Body = body
+                        sender = new { name = "H&Q Store", email = "diema448@gmail.com" },
+                        to = new[] { new { email = toEmail, name = "Khách Hàng" } },
+                        subject = subject,
+                        htmlContent = $@"<h3>Mã OTP xác thực đặt lại mật khẩu của bạn là: <b style='color:blue; font-size:24px;'>{body}</b></h3>"
                     };
-                    mail.To.Add(toEmail);
 
-                    await smtp.SendMailAsync(mail);
-                    return true;
+                    var options = new System.Text.Json.JsonSerializerOptions 
+                    { 
+                        PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase 
+                    };
+                    
+                    var jsonContent = new StringContent(
+                        System.Text.Json.JsonSerializer.Serialize(emailData, options), 
+                        System.Text.Encoding.UTF8, 
+                        "application/json"
+                    );
+
+                    var response = await client.PostAsync("smtp/email", jsonContent);
+                    return response.IsSuccessStatusCode;
                 }
             }
             catch (Exception ex)
             {
-                Console.WriteLine("Email Error: " + ex.Message);
+                Console.WriteLine("[Brevo API Quên MK Error]: " + ex.Message);
                 return false;
             }
         }
