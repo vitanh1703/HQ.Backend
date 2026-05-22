@@ -54,17 +54,17 @@ namespace HQ.Backend.Controllers
 
             _registerOtpStorage[user.Email] = (otp, DateTime.Now.AddMinutes(5), 0, user);
 
-            // BỎ QUA HÀM SendEmailAsync DỄ BỊ CHẶN TRÊN CLOUD
-            // Ép hệ thống in thẳng mã OTP ra màn hình Log đen của Railway để bạn lấy
-            Console.WriteLine($"====== [DỰ ÁN H&Q STORE] OTP CỦA {user.Email} LÀ: {otp} ======");
+            // BẬT LẠI LỆNH GỬI MAIL THẬT:
+            bool isSent = await SendEmailAsync(user.Email, "Mã OTP đăng ký tài khoản - H&Q Store", 
+                $"Xin chào,\n\nMã OTP để đăng ký tài khoản của bạn là: {otp}\n\nMã này có hiệu lực trong 5 phút. Vui lòng không chia sẻ mã này với bất kỳ ai.");
 
-            // Ép trạng thái luôn luôn là gửi thành công để Frontend chuyển sang ô nhập OTP
-            bool isSent = true; 
+            // Giữ nguyên dòng in log này phòng khi bạn muốn check nhanh không cần mở hòm thư
+            Console.WriteLine($"====== [DỰ ÁN H&Q STORE] OTP CỦA {user.Email} LÀ: {otp} ======");
 
             if (isSent) 
                 return Ok(new { message = "Mã OTP đã được gửi!" });
             
-            return StatusCode(500, new { message = "Lỗi gửi mail!" });
+            return StatusCode(500, new { message = "Gửi mail thất bại từ Mail Server Brevo API!" });
         }
 
         [HttpPost("verify-register-otp")]
@@ -225,29 +225,49 @@ namespace HQ.Backend.Controllers
         {
             try
             {
-                using (SmtpClient smtp = new SmtpClient("smtp-relay.brevo.com", 587))
+                using (var client = new HttpClient())
                 {
-                    string brevoLogin = "ac30b0001@smtp-brevo.com"; 
-                    string brevoPassword = "xsmtpsib-d3c1654cfc2453087d77780ccbf3c3f9abba235cc9db8b2b1360b495aa396b62-JQeW66lVHgRfgZDE";
+                    // 1. Cấu hình endpoint gửi mail của Brevo qua cổng HTTPS (An toàn 100% trên Cloud)
+                    client.BaseAddress = new Uri("https://api.brevo.com/v1/");
+                    
+                    // 2. Điền mã API Key bạn vừa lấy ở Bước 1 vào đây
+                    client.DefaultRequestHeaders.Add("api-key", "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");
+                    client.DefaultRequestHeaders.Accept.Add(new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/json"));
 
-                    smtp.Credentials = new NetworkCredential(brevoLogin, brevoPassword);
-                    smtp.EnableSsl = true;
-
-                    MailMessage mail = new MailMessage
+                    // 3. Đóng gói dữ liệu JSON theo chuẩn cấu hình yêu cầu của Brevo
+                    var emailData = new
                     {
-                        From = new MailAddress("diema448@gmail.com", "H&Q Store"),
-                        Subject = subject,
-                        Body = body
+                        sender = new { name = "H&Q Store", email = "diema448@gmail.com" }, // Email này phải trùng với email bạn đăng ký Brevo
+                        to = new[] { new { email = toEmail } },
+                        subject = subject,
+                        textContent = body
                     };
-                    mail.To.Add(toEmail);
 
-                    await smtp.SendMailAsync(mail);
-                    return true;
+                    var jsonContent = new StringContent(
+                        System.Text.Json.JsonSerializer.Serialize(emailData),
+                        System.Text.Encoding.UTF8,
+                        "application/json"
+                    );
+
+                    // 4. Bắn request sang Mail Server Brevo
+                    var response = await client.PostAsync("smtp/email", jsonContent);
+
+                    if (response.IsSuccessStatusCode)
+                    {
+                        Console.WriteLine($"[Brevo API] Gửi mail OTP tới {toEmail} thành công!");
+                        return true;
+                    }
+                    else
+                    {
+                        string errorResponse = await response.Content.ReadAsStringAsync();
+                        Console.WriteLine($"[Brevo API Lỗi]: {response.StatusCode} - {errorResponse}");
+                        return false;
+                    }
                 }
             }
             catch (Exception ex)
             {
-                Console.WriteLine("Email Error via Brevo: " + ex.Message);
+                Console.WriteLine("[Brevo API Crash]: " + ex.Message);
                 return false;
             }
         }
