@@ -221,9 +221,12 @@ namespace HQ.Backend.Controllers
         {
             try
             {
-                using (SmtpClient smtp = new SmtpClient("smtp.gmail.com", 587))
+                using (SmtpClient smtp = new SmtpClient("smtp-relay.brevo.com", 587))
                 {
-                    smtp.Credentials = new NetworkCredential("diema448@gmail.com", "gyykaypfhslrkvew");
+                    string brevoLogin = "ac30b0001@smtp-brevo.com"; 
+                    string brevoPassword = "xsmtpsib-d3c1654cfc2453087d77780ccbf3c3f9abba235cc9db8b2b1360b495aa396b62-JQeW66lVHgRfgZDE";
+
+                    smtp.Credentials = new NetworkCredential(brevoLogin, brevoPassword);
                     smtp.EnableSsl = true;
 
                     MailMessage mail = new MailMessage
@@ -240,7 +243,7 @@ namespace HQ.Backend.Controllers
             }
             catch (Exception ex)
             {
-                Console.WriteLine("Email Error: " + ex.Message);
+                Console.WriteLine("Email Error via Brevo: " + ex.Message);
                 return false;
             }
         }
