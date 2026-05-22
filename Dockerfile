@@ -1,23 +1,23 @@
-# Stage 1: Build ứng dụng bằng SDK 8.0
+# Stage 1: Build dự án
 FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
 WORKDIR /src
 
-# Copy toàn bộ mã nguồn vào container
+# Copy toàn bộ file trong repository vào Docker
 COPY . .
 
-# Đi vào thư mục con chứa file .csproj để restore và publish
-WORKDIR "/src/HQ.Backend/HQ.Backend"
-RUN dotnet restore "HQ.Backend.csproj"
-RUN dotnet publish "HQ.Backend.csproj" -c Release -o /app/publish
+# Sử dụng đường dẫn trực tiếp từ thư mục gốc để restore và publish 
+# (Hệ thống sẽ tự quét chuẩn xác theo đúng cấu trúc hai tầng thư mục của bạn)
+RUN dotnet restore "HQ.Backend/HQ.Backend/HQ.Backend.csproj"
+RUN dotnet publish "HQ.Backend/HQ.Backend/HQ.Backend.csproj" -c Release -o /app/publish
 
-# Stage 2: Chạy ứng dụng bằng Runtime 8.0
+# Stage 2: Chạy ứng dụng
 FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS final
 WORKDIR /app
 COPY --from=build /app/publish .
 
-# Cấu hình cổng lắng nghe theo biến môi trường PORT của Railway
+# Cấu hình Port chạy cho Railway
 ENV ASPNETCORE_URLS=http://+:8080
 EXPOSE 8080
 
-# Mẹo nhỏ: Dùng lệnh shell để tự động tìm file .dll chính trong thư mục và chạy, tránh lỗi viết Hoa/thường
+# Tự động quét file dll chính để chạy
 ENTRYPOINT ["sh", "-c", "dotnet $(ls *.runtimeconfig.json | cut -d'.' -f1-2).dll"]
