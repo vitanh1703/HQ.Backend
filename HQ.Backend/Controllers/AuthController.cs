@@ -226,52 +226,34 @@ namespace HQ.Backend.Controllers
         {
             try
             {
-                using (var client = new HttpClient())
+                // Khởi tạo SmtpClient kết nối trực tiếp đến cổng SMTP của Google
+                using (SmtpClient smtp = new SmtpClient("smtp.gmail.com", 587))
                 {
-                    // SỬA CHÍNH XÁC: Thay đổi v1 thành v3 ở đây
-                    client.BaseAddress = new Uri("https://api.brevo.com/v3/"); 
-                    
-                    client.DefaultRequestHeaders.Add("api-key", "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");
-                    client.DefaultRequestHeaders.Accept.Add(new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/json"));
+                    // Dán chính xác thông tin tài khoản cá nhân của bạn
+                    string myEmail = "diema448@gmail.com"; 
+                    string myAppPassword = "qovxmnpbxichgjvq"; // Mã mật khẩu ứng dụng 16 ký tự đã bỏ dấu cách
 
-                    var emailData = new
+                    smtp.Credentials = new NetworkCredential(myEmail, myAppPassword);
+                    smtp.EnableSsl = true;
+
+                    MailMessage mail = new MailMessage
                     {
-                        sender = new { name = "H&Q Store", email = "diema448@gmail.com" }, // Đảm bảo trùng email tài khoản Brevo
-                        to = new[] { new { email = toEmail, name = "Khách Hàng" } },
-                        subject = subject,
-                        htmlContent = body.Replace("\n", "<br/>")
+                        From = new MailAddress(myEmail, "H&Q Store"),
+                        Subject = subject,
+                        Body = body, // Chuỗi text chứa mã số OTP 6 số
+                        IsBodyHtml = false // Đặt văn bản thuần để Gmail xử lý nhanh, không bị tính là spam
                     };
+                    mail.To.Add(toEmail);
 
-                    var options = new System.Text.Json.JsonSerializerOptions
-                    {
-                        PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase
-                    };
-
-                    var jsonContent = new StringContent(
-                        System.Text.Json.JsonSerializer.Serialize(emailData, options),
-                        System.Text.Encoding.UTF8,
-                        "application/json"
-                    );
-
-                    // Bắn request đến đúng endpoint v3: https://api.brevo.com/v3/smtp/email
-                    var response = await client.PostAsync("smtp/email", jsonContent);
-
-                    if (response.IsSuccessStatusCode)
-                    {
-                        Console.WriteLine($"[Brevo API] Gửi mail thành công tới {toEmail}");
-                        return true;
-                    }
-                    else
-                    {
-                        string errorResponse = await response.Content.ReadAsStringAsync();
-                        Console.WriteLine($"[Brevo API Lỗi]: {response.StatusCode} - {errorResponse}");
-                        return false;
-                    }
+                    await smtp.SendMailAsync(mail);
+                    Console.WriteLine($"[SMTP Gmail] Gửi thư OTP thành công tới: {toEmail}");
+                    return true;
                 }
             }
             catch (Exception ex)
             {
-                Console.WriteLine("[Brevo API Crash]: " + ex.Message);
+                // Ghi lại lỗi chi tiết ra Deploy Logs của Railway nếu Google hoặc Cloud chặn kết nối
+                Console.WriteLine("[SMTP Gmail Error]: " + ex.Message);
                 return false;
             }
         }
