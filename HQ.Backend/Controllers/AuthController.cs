@@ -227,34 +227,37 @@ namespace HQ.Backend.Controllers
             {
                 using (var client = new HttpClient())
                 {
-                    // 1. Cấu hình endpoint gửi mail của Brevo qua cổng HTTPS (An toàn 100% trên Cloud)
-                    client.BaseAddress = new Uri("https://api.brevo.com/v1/");
+                    // SỬA CHÍNH XÁC: Thay đổi v1 thành v3 ở đây
+                    client.BaseAddress = new Uri("https://api.brevo.com/v3/"); 
                     
-                    // 2. Điền mã API Key bạn vừa lấy ở Bước 1 vào đây
-                    client.DefaultRequestHeaders.Add("api-key", "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");
+                    client.DefaultRequestHeaders.Add("api-key", "MÃ_API_KEY_BREVO_CỦA_BẠN");
                     client.DefaultRequestHeaders.Accept.Add(new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/json"));
 
-                    // 3. Đóng gói dữ liệu JSON theo chuẩn cấu hình yêu cầu của Brevo
                     var emailData = new
                     {
-                        sender = new { name = "H&Q Store", email = "diema448@gmail.com" }, // Email này phải trùng với email bạn đăng ký Brevo
-                        to = new[] { new { email = toEmail } },
+                        sender = new { name = "H&Q Store", email = "diema448@gmail.com" }, // Đảm bảo trùng email tài khoản Brevo
+                        to = new[] { new { email = toEmail, name = "Khách Hàng" } },
                         subject = subject,
-                        textContent = body
+                        htmlContent = body.Replace("\n", "<br/>")
+                    };
+
+                    var options = new System.Text.Json.JsonSerializerOptions
+                    {
+                        PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase
                     };
 
                     var jsonContent = new StringContent(
-                        System.Text.Json.JsonSerializer.Serialize(emailData),
+                        System.Text.Json.JsonSerializer.Serialize(emailData, options),
                         System.Text.Encoding.UTF8,
                         "application/json"
                     );
 
-                    // 4. Bắn request sang Mail Server Brevo
+                    // Bắn request đến đúng endpoint v3: https://api.brevo.com/v3/smtp/email
                     var response = await client.PostAsync("smtp/email", jsonContent);
 
                     if (response.IsSuccessStatusCode)
                     {
-                        Console.WriteLine($"[Brevo API] Gửi mail OTP tới {toEmail} thành công!");
+                        Console.WriteLine($"[Brevo API] Gửi mail thành công tới {toEmail}");
                         return true;
                     }
                     else
