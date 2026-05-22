@@ -5,7 +5,7 @@ WORKDIR /src
 # Copy toàn bộ mã nguồn vào container
 COPY . .
 
-# Đi vào đúng thư mục con nơi chứa file .csproj để thực hiện restore và publish
+# Đi vào thư mục con chứa file .csproj để restore và publish
 WORKDIR "/src/HQ.Backend/HQ.Backend"
 RUN dotnet restore "HQ.Backend.csproj"
 RUN dotnet publish "HQ.Backend.csproj" -c Release -o /app/publish
@@ -19,4 +19,5 @@ COPY --from=build /app/publish .
 ENV ASPNETCORE_URLS=http://+:8080
 EXPOSE 8080
 
-ENTRYPOINT ["dotnet", "HQ.Backend.dll"]
+# Mẹo nhỏ: Dùng lệnh shell để tự động tìm file .dll chính trong thư mục và chạy, tránh lỗi viết Hoa/thường
+ENTRYPOINT ["sh", "-c", "dotnet $(ls *.runtimeconfig.json | cut -d'.' -f1-2).dll"]
