@@ -31,8 +31,7 @@ namespace HQ.Backend.Controllers
 
                 VnPayLibrary vnpay = new VnPayLibrary();
 
-                // ÉP KIỂU SỐ NGUYÊN: Loại bỏ hoàn toàn mọi dấu chấm thập phân lẻ của số tiền
-                long amountInVnd = (long)Math.Round(request.Amount);
+                long amountInVnd = (long)Math.Round((decimal)request.Amount);
                 long vnpAmount = amountInVnd * 100;
 
                 // CHUẨN HÓA IPV4 TRÊN RAILWAY: Loại bỏ dấu hai chấm của IPv6 lai tránh crash VNPay
