@@ -81,40 +81,48 @@ namespace HQ.Backend.Controllers
         [HttpGet("vnpay-ipn")]
         public async Task<IActionResult> VnPayIPN()
         {
-            var vnpayData = Request.Query;
-            VnPayLibrary vnpay = new VnPayLibrary();
-
-            foreach (var (key, value) in vnpayData)
+            try
             {
-                if (!string.IsNullOrEmpty(key) && key.StartsWith("vnp_"))
+                var vnpayData = Request.Query;
+                VnPayLibrary vnpay = new VnPayLibrary();
+
+                foreach (var (key, value) in vnpayData)
                 {
-                    vnpay.AddResponseData(key, value.ToString());
-                }
-            }
-
-            string secretKey = "FOT4EZMW8ZT729XNKBJR3NW7GNTPA6HX";
-            string vnp_SecureHash = Request.Query["vnp_SecureHash"];
-            bool checkSignature = vnpay.ValidateSignature(vnp_SecureHash, secretKey);
-
-            if (checkSignature)
-            {
-                string vnp_ResponseCode = vnpay.GetResponseData("vnp_ResponseCode");
-                int orderId = int.Parse(vnpay.GetResponseData("vnp_TxnRef"));
-
-                if (vnp_ResponseCode == "00") 
-                {
-                    var order = await _context.Orders.FindAsync(orderId);
-                    if (order != null && order.Status != "Success")
+                    if (!string.IsNullOrEmpty(key) && key.StartsWith("vnp_"))
                     {
-                        order.Status = "Success"; 
-                        await _context.SaveChangesAsync();
+                        vnpay.AddResponseData(key, value.ToString());
                     }
                 }
-                
-                return Ok(new { RspCode = "00", Message = "Confirm Success" });
-            }
 
-            return BadRequest(new { RspCode = "97", Message = "Invalid Signature" });
+                string secretKey = "FOT4EZMW8ZT729XNKBJR3NW7GNTPA6HX";
+                string vnp_SecureHash = Request.Query["vnp_SecureHash"];
+                bool checkSignature = vnpay.ValidateSignature(vnp_SecureHash, secretKey);
+
+                if (checkSignature)
+                {
+                    string vnp_ResponseCode = vnpay.GetResponseData("vnp_ResponseCode");
+                    int orderId = int.Parse(vnpay.GetResponseData("vnp_TxnRef"));
+
+                    if (vnp_ResponseCode == "00") 
+                    {
+                        var order = await _context.Orders.FindAsync(orderId);
+                        if (order != null && order.Status != "Success")
+                        {
+                            order.Status = "Success"; 
+                            await _context.SaveChangesAsync();
+                        }
+                    }
+                    
+                    return Ok(new { RspCode = "00", Message = "Confirm Success" });
+                }
+
+                return BadRequest(new { RspCode = "97", Message = "Invalid Signature" });
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("[VNPay IPN Error]: " + ex.Message);
+                return StatusCode(500, new { RspCode = "99", Message = "Internal Error" });
+            }
         }
     }
 }
