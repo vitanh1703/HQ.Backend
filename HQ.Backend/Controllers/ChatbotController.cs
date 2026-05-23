@@ -36,7 +36,7 @@ namespace HQ.Backend.Controllers
                     return StatusCode(500, new { message = "Không tìm thấy khóa API. Vui lòng thiết lập biến môi trường GOOGLE_API_KEY hoặc GEMINI_API_KEY." });
                 }
 
-                var client = new Client();
+                var client = new Client(apiKey: apiKey);
 
                 // 2. Thiết lập System Instruction (Ngữ cảnh đóng vai) chuẩn cấu trúc đối tượng Content/Part của SDK
                 var generateContentConfig = new GenerateContentConfig
