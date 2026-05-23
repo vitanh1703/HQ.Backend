@@ -21,7 +21,7 @@ namespace HQ.Backend.Controllers
         [HttpPost("create-payment")]
         public IActionResult CreatePayment([FromBody] PaymentRequest request)
         {
-            string vnp_Returnurl = "http://localhost:5173/payment-callback"; 
+            string vnp_Returnurl = "https://vitanh17.id.vn/payment-callback"; 
             string vnp_Url = "https://sandbox.vnpayment.vn/paymentv2/vpcpay.html";
             string vnp_TmnCode = "0DRVD7D3";
             string vnp_HashSecret = "FOT4EZMW8ZT729XNKBJR3NW7GNTPA6HX";
