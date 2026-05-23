@@ -29,7 +29,7 @@ namespace HQ.Backend.Controllers
                     return BadRequest(new { message = "Thông tin đơn hàng hoặc số tiền không hợp lệ!" });
                 }
 
-                string vnp_Returnurl = "https://vitanh17.id.vn/checkout"; 
+                string vnp_Returnurl = "https://vitanh17.id.vn/payment-callback";
                 string vnp_Url = "https://sandbox.vnpayment.vn/paymentv2/vpcpay.html";
                 string vnp_TmnCode = "0DRVD7D3";
                 string vnp_HashSecret = "FOT4EZMW8ZT729XNKBJR3NW7GNTPA6HX";
