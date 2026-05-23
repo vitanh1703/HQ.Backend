@@ -166,6 +166,47 @@ namespace HQ.Backend.Controllers
             return Ok(orders);
         }
 
+        [HttpGet("{id}")]
+        public async Task<IActionResult> GetOrderById(int id)
+        {
+            var order = await _context.Orders.FirstOrDefaultAsync(o => o.Id == id);
+            
+            if (order == null)
+                return NotFound(new { message = "Không tìm thấy đơn hàng" });
+
+            var items = await _context.OrderItems
+                .Where(oi => oi.OrderId == id)
+                .Join(_context.ProductVariants, oi => oi.VariantId, v => v.Id, (oi, v) => new { oi, v })
+                .Join(_context.Products, joined => joined.v.ProductId, p => p.Id, (joined, p) => new
+                {
+                    Id = joined.oi.Id,
+                    VariantId = joined.v.Id,
+                    ProductId = p.Id,
+                    ProductName = p.Name,
+                    Size = joined.v.Size,
+                    Color = joined.v.Color,
+                    PriceAtPurchase = joined.oi.PriceAtPurchase,
+                    Quantity = joined.oi.Quantity,
+                    Image = p.ImageUrl
+                }).ToListAsync();
+
+            return Ok(new
+            {
+                id = order.Id,
+                userId = order.UserId,
+                orderCode = order.OrderCode,
+                fullName = order.FullName,
+                email = order.Email,
+                phone = order.Phone,
+                address = order.Address,
+                totalAmount = order.TotalAmount,
+                status = order.Status,
+                orderDate = order.OrderDate,
+                paymentDate = order.PaymentDate,
+                items = items
+            });
+        }
+
         [HttpPut("{id}/status")]
         public async Task<IActionResult> UpdateOrderStatus(int id, [FromBody] UpdateOrderStatusRequest request)
         {
