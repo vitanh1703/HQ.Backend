@@ -39,7 +39,7 @@ namespace HQ.Backend.Controllers
 
                 // 3. Gọi mô hình thế hệ mới "gemini-2.0-flash" (hoặc gemini-1.5-flash-latest tùy gói cước tài khoản của bạn)
                 var response = await client.Models.GenerateContentAsync(
-                    model: "gemini-2.5-flash", // Hoặc "gemini-2.0-flash" theo tài liệu
+                    model: "gemini-3.5-flash", // Lựa chọn mô hình thế hệ mới nhất phù hợp với tài khoản của bạn
                     contents: request.Message,
                     config: generateContentConfig
                 );
