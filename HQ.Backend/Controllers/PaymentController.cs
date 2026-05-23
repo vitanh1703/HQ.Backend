@@ -23,7 +23,12 @@ namespace HQ.Backend.Controllers
         {
             try
             {
-                // Đồng bộ URL trả về trang checkout hoặc trang thông báo của bạn trên Production
+                // Kiểm tra dữ liệu đầu vào chặn đứng lỗi Null trước khi tính toán
+                if (request == null || request.OrderId <= 0 || request.Amount <= 0)
+                {
+                    return BadRequest(new { message = "Thông tin đơn hàng hoặc số tiền không hợp lệ!" });
+                }
+
                 string vnp_Returnurl = "https://vitanh17.id.vn/checkout"; 
                 string vnp_Url = "https://sandbox.vnpayment.vn/paymentv2/vpcpay.html";
                 string vnp_TmnCode = "0DRVD7D3";
@@ -31,10 +36,11 @@ namespace HQ.Backend.Controllers
 
                 VnPayLibrary vnpay = new VnPayLibrary();
 
+                // Chuẩn hóa số tiền thành chuỗi số nguyên thuần túy
                 long amountInVnd = (long)Math.Round((decimal)request.Amount);
                 long vnpAmount = amountInVnd * 100;
 
-                // CHUẨN HÓA IPV4 TRÊN RAILWAY: Loại bỏ dấu hai chấm của IPv6 lai tránh crash VNPay
+                // Xử lý IP an toàn cho môi trường Linux Container
                 string ipAddress = HttpContext.Request.Headers["X-Forwarded-For"].FirstOrDefault();
                 if (string.IsNullOrEmpty(ipAddress))
                 {
@@ -48,7 +54,7 @@ namespace HQ.Backend.Controllers
                 {
                     ipAddress = ipAddress.Replace("::ffff:", "");
                 }
-                if (ipAddress.Contains(":")) // Phòng hờ dải IPv6 trần khác
+                if (ipAddress.Contains(":") || string.IsNullOrEmpty(ipAddress))
                 {
                     ipAddress = "127.0.0.1";
                 }
@@ -68,12 +74,16 @@ namespace HQ.Backend.Controllers
 
                 string paymentUrl = vnpay.CreateRequestUrl(vnp_Url, vnp_HashSecret);
 
+                // In kiểm tra link sinh ra trong log hệ thống để kiểm soát luồng
+                Console.WriteLine($"[VNPay Success URL]: {paymentUrl}");
+
                 return Ok(new { url = paymentUrl });
             }
             catch (Exception ex)
             {
-                Console.WriteLine("[VNPay Cloud Crash Log]: " + ex.Message);
-                return StatusCode(500, new { message = "Lỗi hệ thống khi tạo link VNPay!", error = ex.Message });
+                // Ghi nhận log lỗi cụ thể ra màn hình đen Railway 
+                Console.WriteLine("[VNPay Create Error Critical]: " + ex.ToString());
+                return StatusCode(500, new { message = "Lỗi xử lý khởi tạo cổng thanh toán VNPay!", error = ex.Message });
             }
         }
 
