@@ -19,8 +19,23 @@ namespace HQ.Backend.Controllers
 
             try
             {
-                // 1. Khởi tạo Client trần. 
-                // SDK mới sẽ tự động bốc biến môi trường GEMINI_API_KEY đã cấu hình trên Railway.
+                // 1. Nạp khóa API từ biến môi trường.
+                // SDK Google GenAI .NET yêu cầu GOOGLE_API_KEY, nhưng ta hỗ trợ GEMINI_API_KEY làm fallback.
+                var apiKey = System.Environment.GetEnvironmentVariable("GOOGLE_API_KEY");
+                if (string.IsNullOrEmpty(apiKey))
+                {
+                    apiKey = System.Environment.GetEnvironmentVariable("GEMINI_API_KEY");
+                    if (!string.IsNullOrEmpty(apiKey))
+                    {
+                        System.Environment.SetEnvironmentVariable("GOOGLE_API_KEY", apiKey);
+                    }
+                }
+
+                if (string.IsNullOrEmpty(apiKey))
+                {
+                    return StatusCode(500, new { message = "Không tìm thấy khóa API. Vui lòng thiết lập biến môi trường GOOGLE_API_KEY hoặc GEMINI_API_KEY." });
+                }
+
                 var client = new Client();
 
                 // 2. Thiết lập System Instruction (Ngữ cảnh đóng vai) chuẩn cấu trúc đối tượng Content/Part của SDK
