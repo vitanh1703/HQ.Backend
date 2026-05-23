@@ -82,13 +82,15 @@ namespace HQ.Backend.Helpers
 
     public class VnPayCompare : IComparer<string>
     {
-        public int Compare(string x, string y)
+        public int Compare(string? x, string? y)
         {
             if (x == y) return 0;
             if (x == null) return -1;
             if (y == null) return 1;
-            var vnpCompare = CompareInfo.GetCompareInfo("en-US");
-            return vnpCompare.Compare(x, y, CompareOptions.Ordinal);
+
+            // Sử dụng trực tiếp string.Compare với StringComparison.Ordinal
+            // Giúp so sánh thứ tự bảng chữ cái nhị phân trần mà không phụ thuộc vào CultureInfo của hệ điều hành
+            return string.Compare(x, y, StringComparison.Ordinal);
         }
     }
 }
