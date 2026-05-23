@@ -42,7 +42,7 @@ namespace HQ.Backend.Controllers
                 // 🎯 Gọi hàm GenerateContentAsync khớp chính xác từng tham số như ảnh mẫu
                 // Sử dụng model quốc dân gemini-1.5-flash-latest để an toàn băng thông
                 var response = await client.Models.GenerateContentAsync(
-                    model: "gemini-1.5-flash", 
+                    model: "gemini-2.0-flash", 
                     contents: request.Message,
                     config: generateContentConfig
                 );
