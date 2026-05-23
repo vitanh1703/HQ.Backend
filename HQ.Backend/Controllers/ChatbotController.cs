@@ -20,7 +20,7 @@ namespace HQ.Backend.Controllers
             try
             {
                 // 🎯 Điền trực tiếp API Key của bác vào đây để triệt tiêu lỗi môi trường trên Railway
-                string myApiKey = "AIzaSyBiBFlT0JgiFosHaavCYp2sOvRfFm7G09k";
+                string myApiKey = "AIzaSyA5fgce51VcT7Hc3tbbMXzm4H3uNyvaPds";
 
                 // 🎯 Khởi tạo Client truyền cứng Key theo chuẩn SDK
                 var client = new Client(apiKey: myApiKey);
