@@ -21,29 +21,61 @@ namespace HQ.Backend.Controllers
         [HttpPost("create-payment")]
         public IActionResult CreatePayment([FromBody] PaymentRequest request)
         {
-            string vnp_Returnurl = "https://vitanh17.id.vn/payment-callback"; 
-            string vnp_Url = "https://sandbox.vnpayment.vn/paymentv2/vpcpay.html";
-            string vnp_TmnCode = "0DRVD7D3";
-            string vnp_HashSecret = "FOT4EZMW8ZT729XNKBJR3NW7GNTPA6HX";
+            try
+            {
+                // Đồng bộ URL trả về trang checkout hoặc trang thông báo của bạn trên Production
+                string vnp_Returnurl = "https://vitanh17.id.vn/checkout"; 
+                string vnp_Url = "https://sandbox.vnpayment.vn/paymentv2/vpcpay.html";
+                string vnp_TmnCode = "0DRVD7D3";
+                string vnp_HashSecret = "FOT4EZMW8ZT729XNKBJR3NW7GNTPA6HX";
 
-            VnPayLibrary vnpay = new VnPayLibrary();
+                VnPayLibrary vnpay = new VnPayLibrary();
 
-            vnpay.AddRequestData("vnp_Version", "2.1.0");
-            vnpay.AddRequestData("vnp_Command", "pay");
-            vnpay.AddRequestData("vnp_TmnCode", vnp_TmnCode);
-            vnpay.AddRequestData("vnp_Amount", (request.Amount * 100).ToString()); 
-            vnpay.AddRequestData("vnp_CreateDate", DateTime.Now.ToString("yyyyMMddHHmmss"));
-            vnpay.AddRequestData("vnp_CurrCode", "VND");
-            vnpay.AddRequestData("vnp_IpAddr", HttpContext.Connection.RemoteIpAddress?.ToString() ?? "127.0.0.1");
-            vnpay.AddRequestData("vnp_Locale", "vn");
-            vnpay.AddRequestData("vnp_OrderInfo", "Thanh toan don hang:" + request.OrderId);
-            vnpay.AddRequestData("vnp_OrderType", "other");
-            vnpay.AddRequestData("vnp_ReturnUrl", vnp_Returnurl);
-            vnpay.AddRequestData("vnp_TxnRef", request.OrderId.ToString()); 
+                // ÉP KIỂU SỐ NGUYÊN: Loại bỏ hoàn toàn mọi dấu chấm thập phân lẻ của số tiền
+                long amountInVnd = (long)Math.Round(request.Amount);
+                long vnpAmount = amountInVnd * 100;
 
-            string paymentUrl = vnpay.CreateRequestUrl(vnp_Url, vnp_HashSecret);
+                // CHUẨN HÓA IPV4 TRÊN RAILWAY: Loại bỏ dấu hai chấm của IPv6 lai tránh crash VNPay
+                string ipAddress = HttpContext.Request.Headers["X-Forwarded-For"].FirstOrDefault();
+                if (string.IsNullOrEmpty(ipAddress))
+                {
+                    ipAddress = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "127.0.0.1";
+                }
+                if (ipAddress.Contains(","))
+                {
+                    ipAddress = ipAddress.Split(',')[0].Trim();
+                }
+                if (ipAddress.Contains("::ffff:"))
+                {
+                    ipAddress = ipAddress.Replace("::ffff:", "");
+                }
+                if (ipAddress.Contains(":")) // Phòng hờ dải IPv6 trần khác
+                {
+                    ipAddress = "127.0.0.1";
+                }
 
-            return Ok(new { url = paymentUrl });
+                vnpay.AddRequestData("vnp_Version", "2.1.0");
+                vnpay.AddRequestData("vnp_Command", "pay");
+                vnpay.AddRequestData("vnp_TmnCode", vnp_TmnCode);
+                vnpay.AddRequestData("vnp_Amount", vnpAmount.ToString()); 
+                vnpay.AddRequestData("vnp_CreateDate", DateTime.Now.ToString("yyyyMMddHHmmss"));
+                vnpay.AddRequestData("vnp_CurrCode", "VND");
+                vnpay.AddRequestData("vnp_IpAddr", ipAddress);
+                vnpay.AddRequestData("vnp_Locale", "vn");
+                vnpay.AddRequestData("vnp_OrderInfo", "Thanh toan don hang:" + request.OrderId);
+                vnpay.AddRequestData("vnp_OrderType", "other");
+                vnpay.AddRequestData("vnp_ReturnUrl", vnp_Returnurl);
+                vnpay.AddRequestData("vnp_TxnRef", request.OrderId.ToString()); 
+
+                string paymentUrl = vnpay.CreateRequestUrl(vnp_Url, vnp_HashSecret);
+
+                return Ok(new { url = paymentUrl });
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("[VNPay Cloud Crash Log]: " + ex.Message);
+                return StatusCode(500, new { message = "Lỗi hệ thống khi tạo link VNPay!", error = ex.Message });
+            }
         }
 
         [HttpGet("vnpay-ipn")]
