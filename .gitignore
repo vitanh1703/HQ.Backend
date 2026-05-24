@@ -307,8 +307,6 @@ _Pvt_Extensions
 paket-files/
 
 # Local API key files (do not commit)
-api_key.txt
-ChatBot/data.txt
 
 # FAKE - F# Make
 .fake/
