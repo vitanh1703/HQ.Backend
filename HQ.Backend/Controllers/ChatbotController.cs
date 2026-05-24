@@ -1,9 +1,11 @@
 using Microsoft.AspNetCore.Mvc;
 using System;
 using System.Collections.Generic;
+using System.IO;
+using System.Net.Http;
+using System.Text;
+using System.Text.Json;
 using System.Threading.Tasks;
-using Google.GenAI;       // Khớp thư viện trong ảnh mẫu
-using Google.GenAI.Types; // Khớp thư viện trong ảnh mẫu
 
 namespace HQ.Backend.Controllers
 {
@@ -11,58 +13,126 @@ namespace HQ.Backend.Controllers
     [Route("api/chatbot")]
     public class ChatbotController : ControllerBase
     {
-        [HttpPost("ask")]
-        public async Task<IActionResult> AskChatbot([FromBody] ChatRequest request)
+        private static string GetApiKey()
         {
-            if (string.IsNullOrEmpty(request.Message))
+            try
+            {
+                string path = Path.Combine(Directory.GetCurrentDirectory(), "api_key.txt");
+                if (System.IO.File.Exists(path))
+                {
+                    return System.IO.File.ReadAllText(path).Trim();
+                }
+                var envKey = Environment.GetEnvironmentVariable("GEMINI_API_KEY");
+                if (!string.IsNullOrEmpty(envKey)) return envKey.Trim();
+
+                return "KEY_NOT_FOUND";
+            }
+            catch { return ""; }
+        }
+
+        private static string GEMINI_URL => $"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={GetApiKey()}";
+        private static string _trainingData = "";
+        private static List<string> _conversationHistory = new List<string>();
+        private const int MaxHistoryEntries = 10;
+
+        public ChatbotController()
+        {
+            if (string.IsNullOrEmpty(_trainingData))
+            {
+                try
+                {
+                    var filePath = Path.Combine(Directory.GetCurrentDirectory(), "ChatBot", "data.txt");
+                    if (System.IO.File.Exists(filePath))
+                    {
+                        _trainingData = System.IO.File.ReadAllText(filePath);
+                    }
+                }
+                catch { }
+            }
+        }
+
+        public class ChatRequest
+        {
+            public string message { get; set; } = string.Empty;
+        }
+
+        [HttpPost]
+        public async Task<IActionResult> Chat([FromBody] ChatRequest request)
+        {
+            if (request == null || string.IsNullOrEmpty(request.message))
                 return BadRequest(new { message = "Tin nhắn không được để trống." });
 
             try
             {
-                // 🎯 Điền trực tiếp API Key của bác vào đây để triệt tiêu lỗi môi trường trên Railway
-                string myApiKey = "AIzaSyA5fgce51VcT7Hc3tbbMXzm4H3uNyvaPds";
+                // Build history text (limited)
+                var historyText = string.Join("\n", _conversationHistory);
 
-                // 🎯 Khởi tạo Client truyền cứng Key theo chuẩn SDK
-                var client = new Client(apiKey: myApiKey);
+                var prompt = _trainingData
+                    + "\n\n--- LỊCH SỬ ĐỐI THOẠI: ---\n"
+                    + historyText
+                    + "\n\n--- CÂU HỎI CỦA KHÁCH HÀNG: ---\n"
+                    + request.message
+                    + "\n\nHãy trả lời đóng vai nhân viên H&Q Store như hướng dẫn.";
 
-                // 🎯 Tạo Config đóng vai và cấu hình y hệt ảnh mẫu bác gửi
-                var generateContentConfig = new GenerateContentConfig
+                var requestBody = new
                 {
-                    SystemInstruction = new Content
+                    contents = new[]
                     {
-                        Parts = new List<Part> 
+                        new
                         {
-                            new Part { Text = "Bạn là trợ lý ảo thông minh của 'H&Q Store' - cửa hàng thời trang Streetwear. Hãy trả lời khách hàng bằng tiếng Việt một cách lịch sự, ngắn gọn dưới 3 câu." }
+                            parts = new[]
+                            {
+                                new { text = prompt }
+                            }
                         }
-                    },
-                    Temperature = 0.7,
-                    MaxOutputTokens = 150
+                    }
                 };
 
-                // 🎯 Gọi hàm GenerateContentAsync khớp chính xác từng tham số như ảnh mẫu
-                // Sử dụng model quốc dân gemini-1.5-flash-latest để an toàn băng thông
-                var response = await client.Models.GenerateContentAsync(
-                    model: "gemini-2.0-flash", 
-                    contents: request.Message,
-                    config: generateContentConfig
-                );
+                using var client = new HttpClient();
+                var content = new StringContent(JsonSerializer.Serialize(requestBody), Encoding.UTF8, "application/json");
 
-                // 🎯 Bóc tách dữ liệu JSON tầng sâu trả về từ Google
-                string? botReply = response.Candidates?[0]?.Content?.Parts?[0]?.Text;
-                
-                return Ok(new { reply = botReply?.Trim() });
+                var response = await client.PostAsync(GEMINI_URL, content);
+                var responseString = await response.Content.ReadAsStringAsync();
+
+                if (!response.IsSuccessStatusCode)
+                {
+                    return Ok(new { reply = "Lỗi API Google: " + responseString });
+                }
+
+                using var doc = JsonDocument.Parse(responseString);
+                string? botReply = null;
+                try
+                {
+                    botReply = doc.RootElement
+                        .GetProperty("candidates")[0]
+                        .GetProperty("content")
+                        .GetProperty("parts")[0]
+                        .GetProperty("text").GetString();
+                }
+                catch
+                {
+                    botReply = responseString;
+                }
+
+                botReply = botReply?.Trim();
+
+                // Append to in-memory history
+                _conversationHistory.Add("User: " + request.message);
+                if (!string.IsNullOrEmpty(botReply)) _conversationHistory.Add("Assistant: " + botReply);
+                // Trim history
+                if (_conversationHistory.Count > MaxHistoryEntries)
+                {
+                    var removeCount = _conversationHistory.Count - MaxHistoryEntries;
+                    _conversationHistory.RemoveRange(0, removeCount);
+                }
+
+                return Ok(new { reply = botReply });
             }
             catch (Exception ex)
             {
-                // Nếu có lỗi phát sinh, in ra log và nhả chuỗi lỗi về Front-end để bác nhìn thấy ngay
                 Console.WriteLine($"[CRITICAL ERROR]: {ex.Message}");
-                return Ok(new { reply = $"[Mẫu Code SDK Error]: {ex.Message}" });
+                return Ok(new { reply = $"[Mẫu Code HTTP Error]: {ex.Message}" });
             }
         }
-    }
-
-    public class ChatRequest
-    {
-        public string Message { get; set; } = string.Empty;
     }
 }
