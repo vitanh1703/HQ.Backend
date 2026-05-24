@@ -15,12 +15,19 @@ namespace HQ.Backend.Controllers
     {
         private static string GetApiKey()
         {
-            var envKey = Environment.GetEnvironmentVariable("GEMINI_API_KEY");
-            
-            if (!string.IsNullOrEmpty(envKey)) 
-                return envKey.Trim();
+            try
+            {
+                string path = Path.Combine(Directory.GetCurrentDirectory(), "api_key.txt");
+                if (System.IO.File.Exists(path))
+                {
+                    return System.IO.File.ReadAllText(path).Trim();
+                }
+                var envKey = Environment.GetEnvironmentVariable("GEMINI_API_KEY");
+                if (!string.IsNullOrEmpty(envKey)) return envKey.Trim();
 
-            return "KEY_NOT_FOUND";
+                return "KEY_NOT_FOUND";
+            }
+            catch { return ""; }
         }
 
         private static string GEMINI_URL => $"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={GetApiKey()}";
