@@ -57,6 +57,8 @@ namespace HQ.Backend.Controllers
         }
 
         [HttpPost]
+        [HttpPost("ask")]
+        [HttpPost("/api/chat")]
         public async Task<IActionResult> Chat([FromBody] ChatRequest request)
         {
             if (request == null || string.IsNullOrEmpty(request.message))
