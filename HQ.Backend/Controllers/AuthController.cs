@@ -59,6 +59,10 @@ namespace HQ.Backend.Controllers
             user.Status = true;
             user.Role = "Customer";
 
+            // Clear any existing OTP for this email to avoid conflicts
+            _registerOtpStorage.TryRemove(user.Email, out _);
+            
+            // Store new OTP with fresh expiry time
             _registerOtpStorage[user.Email] = (otp, DateTime.Now.AddMinutes(5), 0, user);
 
             // Bật lại hàm gửi mail qua API Brevo
@@ -78,13 +82,20 @@ namespace HQ.Backend.Controllers
         [HttpPost("verify-register-otp")]
         public async Task<IActionResult> VerifyRegisterOtp([FromBody] VerifyRegisterOtpDto request)
         {
+            // Check if email already exists in database (account already created)
+            if (await _context.Users.AnyAsync(u => u.Email == request.Email))
+            {
+                _registerOtpStorage.TryRemove(request.Email, out _);
+                return BadRequest(new { message = "Tài khoản này đã tồn tại. Vui lòng đăng nhập!" });
+            }
+
             if (!_registerOtpStorage.TryGetValue(request.Email, out var data))
-                return BadRequest(new { message = "OTP không tồn tại hoặc đã hết hạn." });
+                return BadRequest(new { message = "OTP không tồn tại. Vui lòng gửi mã OTP mới!" });
 
             if (DateTime.Now > data.Expiry)
             {
                 _registerOtpStorage.TryRemove(request.Email, out _);
-                return BadRequest(new { message = "OTP đã hết hạn." });
+                return BadRequest(new { message = "Mã OTP đã hết hạn. Vui lòng gửi mã OTP mới!" });
             }
 
             if (data.Otp != request.Otp)
@@ -93,16 +104,10 @@ namespace HQ.Backend.Controllers
                 if (failedAttempts >= 5)
                 {
                     _registerOtpStorage.TryRemove(request.Email, out _);
-                    return BadRequest(new { message = "Bạn đã nhập sai quá 5 lần. Mã OTP đã bị hủy!" });
+                    return BadRequest(new { message = "Bạn đã nhập sai quá 5 lần. Mã OTP đã bị hủy! Vui lòng gửi mã OTP mới!" });
                 }
                 _registerOtpStorage[request.Email] = (data.Otp, data.Expiry, failedAttempts, data.PendingUser);
                 return BadRequest(new { message = $"Mã OTP không đúng. Bạn còn {5 - failedAttempts} lần thử." });
-            }
-
-            if (await _context.Users.AnyAsync(u => u.Email == request.Email))
-            {
-                _registerOtpStorage.TryRemove(request.Email, out _);
-                return BadRequest(new { message = "Email đã được sử dụng!" });
             }
 
             _context.Users.Add(data.PendingUser);
