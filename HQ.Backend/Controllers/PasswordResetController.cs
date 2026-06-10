@@ -6,6 +6,7 @@ using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Mail;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Configuration; // Đảm bảo đã có namespace này
 
 namespace HQ.Backend.Controllers
 {
@@ -14,12 +15,15 @@ namespace HQ.Backend.Controllers
     public class PasswordResetController : ControllerBase
     {
         private readonly AppDbContext _context;
+        private readonly IConfiguration _configuration; // Khai báo IConfiguration để đọc biến cấu hình an toàn
         
         private static readonly ConcurrentDictionary<string, (string Otp, DateTime Expiry, int FailedAttempts)> _otpStorage = new();
 
-        public PasswordResetController(AppDbContext context)
+        // Inject IConfiguration vào Constructor
+        public PasswordResetController(AppDbContext context, IConfiguration configuration)
         {
             _context = context;
+            _configuration = configuration;
         }
 
         public class ForgotPasswordDto { public string Email { get; set; } }
@@ -101,11 +105,19 @@ namespace HQ.Backend.Controllers
         {
             try
             {
+                // Đọc API Key từ cấu hình hệ thống (Biến môi trường Railway hoặc file appsettings ở Local)
+                string brevoApiKey = _configuration["Brevo:ApiKey"];
+
+                if (string.IsNullOrEmpty(brevoApiKey))
+                {
+                    Console.WriteLine("[Brevo Reset Error]: Không tìm thấy API Key trong cấu hình hệ thống!");
+                    return false;
+                }
+
                 using (var client = new HttpClient())
                 {
                     client.BaseAddress = new Uri("https://api.brevo.com/v3/");
-                    
-                    client.DefaultRequestHeaders.Add("api-key", "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");
+                    client.DefaultRequestHeaders.Add("api-key", brevoApiKey); // Sử dụng cấu hình an toàn
                     client.DefaultRequestHeaders.Accept.Add(new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/json"));
 
                     var emailData = new
@@ -128,6 +140,14 @@ namespace HQ.Backend.Controllers
                     );
 
                     var response = await client.PostAsync("smtp/email", jsonContent);
+
+                    // Bổ sung ghi log phản hồi từ Brevo nếu xảy ra lỗi
+                    if (!response.IsSuccessStatusCode)
+                    {
+                        string errorResponse = await response.Content.ReadAsStringAsync();
+                        Console.WriteLine($"[Brevo Reset API Error] StatusCode: {response.StatusCode}, Content: {errorResponse}");
+                    }
+
                     return response.IsSuccessStatusCode;
                 }
             }

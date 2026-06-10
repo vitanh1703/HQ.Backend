@@ -10,6 +10,7 @@ using BCrypt.Net;
 using System.Net;
 using System.Net.Mail;
 using System.Collections.Concurrent;
+using Microsoft.Extensions.Configuration; // Đảm bảo có namespace này
 
 namespace HQ.Backend.Controllers
 {
@@ -18,11 +19,17 @@ namespace HQ.Backend.Controllers
     public class AuthController : ControllerBase
     {
         private readonly AppDbContext _context;
+        private readonly IConfiguration _configuration; // Khai báo IConfiguration để đọc biến môi trường
         private static readonly ConcurrentDictionary<string, (string Otp, DateTime Expiry, int FailedAttempts, User PendingUser)> _registerOtpStorage = new();
 
         public class VerifyRegisterOtpDto { public string Email { get; set; } public string Otp { get; set; } }
 
-        public AuthController(AppDbContext context) { _context = context; }
+        // Inject IConfiguration vào Constructor
+        public AuthController(AppDbContext context, IConfiguration configuration) 
+        { 
+            _context = context; 
+            _configuration = configuration;
+        }
 
         [HttpPost("register")]
         public async Task<IActionResult> Register([FromBody] User user)
@@ -54,10 +61,10 @@ namespace HQ.Backend.Controllers
 
             _registerOtpStorage[user.Email] = (otp, DateTime.Now.AddMinutes(5), 0, user);
 
-            // XÓA BỎ HOÀN TOÀN DÒNG: bool isSent = true; VÀ BẬT LẠI DÒNG DƯỚI NÀY:
+            // Bật lại hàm gửi mail qua API Brevo
             bool isSent = await SendEmailAsync(user.Email, "[H&Q Store] Mã OTP Xác Thực Đăng Ký Tài Khoản", otp);
 
-            // In log đen để bạn kiểm soát hệ thống trên Railway
+            // In log để bạn kiểm soát hệ thống trên Railway
             Console.WriteLine($"====== [DỰ ÁN H&Q STORE] OTP CỦA {user.Email} LÀ: {otp} ======");
 
             if (isSent) 
@@ -226,16 +233,24 @@ namespace HQ.Backend.Controllers
         {
             try
             {
+                // Đọc API Key từ Biến môi trường (Railway hoặc file cấu hình local)
+                string brevoApiKey = _configuration["Brevo:ApiKey"];
+
+                if (string.IsNullOrEmpty(brevoApiKey))
+                {
+                    Console.WriteLine("[Brevo Error]: Không tìm thấy API Key trong cấu hình hệ thống!");
+                    return false;
+                }
+
                 using (var client = new HttpClient())
                 {
                     client.BaseAddress = new Uri("https://api.brevo.com/v3/");
-                    // Dán API Key Brevo của bạn vào đây
-                    client.DefaultRequestHeaders.Add("api-key", "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");
+                    client.DefaultRequestHeaders.Add("api-key", brevoApiKey); // Sử dụng biến an toàn
                     client.DefaultRequestHeaders.Accept.Add(new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/json"));
 
                     var emailData = new
                     {
-                        sender = new { name = "H&Q Store", email = "diema448@gmail.com" }, // Email chủ tài khoản Brevo
+                        sender = new { name = "H&Q Store", email = "diema448@gmail.com" }, 
                         to = new[] { new { email = toEmail, name = "Khách Hàng" } },
                         subject = subject,
                         htmlContent = $@"<h3>Mã OTP xác thực của bạn là: <b style='color:blue; font-size:24px;'>{body}</b></h3>"
@@ -245,12 +260,20 @@ namespace HQ.Backend.Controllers
                     var jsonContent = new StringContent(System.Text.Json.JsonSerializer.Serialize(emailData, options), System.Text.Encoding.UTF8, "application/json");
 
                     var response = await client.PostAsync("smtp/email", jsonContent);
+
+                    // Bổ sung thêm log kiểm tra phản hồi từ Brevo nếu gặp lỗi
+                    if (!response.IsSuccessStatusCode)
+                    {
+                        string errorResponse = await response.Content.ReadAsStringAsync();
+                        Console.WriteLine($"[Brevo API Response Error] StatusCode: {response.StatusCode}, Content: {errorResponse}");
+                    }
+
                     return response.IsSuccessStatusCode;
                 }
             }
             catch (Exception ex)
             {
-                Console.WriteLine("[Brevo API Error]: " + ex.Message);
+                Console.WriteLine("[Brevo API Exception]: " + ex.Message);
                 return false;
             }
         }
