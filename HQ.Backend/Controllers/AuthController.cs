@@ -230,7 +230,7 @@ namespace HQ.Backend.Controllers
                 {
                     client.BaseAddress = new Uri("https://api.brevo.com/v3/");
                     // Dán API Key Brevo của bạn vào đây
-                    client.DefaultRequestHeaders.Add("api-key", "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");
+                    client.DefaultRequestHeaders.Add("api-key", "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");
                     client.DefaultRequestHeaders.Accept.Add(new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/json"));
 
                     var emailData = new
