@@ -29,6 +29,28 @@ namespace HQ.Backend.Controllers
             using var transaction = await _context.Database.BeginTransactionAsync();
             try
             {
+                // 0. KIỂM TRA TỒN KHO (FIX: Kiểm tra trước khi tạo đơn)
+                if (request.Items == null || !request.Items.Any())
+                {
+                    return BadRequest(new { message = "Đơn hàng phải có ít nhất 1 sản phẩm!" });
+                }
+
+                foreach (var item in request.Items)
+                {
+                    var variant = await _context.ProductVariants.FindAsync(item.VariantId);
+                    if (variant == null)
+                    {
+                        await transaction.RollbackAsync();
+                        return NotFound(new { message = $"Sản phẩm variant {item.VariantId} không tồn tại!" });
+                    }
+
+                    if (variant.StockQuantity < item.Quantity)
+                    {
+                        await transaction.RollbackAsync();
+                        return BadRequest(new { message = $"Sản phẩm '{variant.Color} - Size {variant.Size}' chỉ còn {variant.StockQuantity} sản phẩm, không đủ {item.Quantity}!" });
+                    }
+                }
+
                 // 1. Tạo OrderCode dễ đọc (Ví dụ: HQ + Ngày giờ + 3 số ngẫu nhiên)
                 string orderCode = "HQ" + DateTime.Now.ToString("yyMMddHHmm") + new Random().Next(100, 999);
 
@@ -90,35 +112,63 @@ namespace HQ.Backend.Controllers
                 return BadRequest(new { error = 1, message = "Không có dữ liệu giao dịch" });
             }
 
-            foreach (var transaction in request.data)
-            {
-                string tranDescription = transaction.description?.ToUpper() ?? "";
-                Console.WriteLine($"Đang xử lý giao dịch: {tranDescription} - Số tiền: {transaction.amount}");
-
-                // 2. Tìm đơn hàng 'Pending' có OrderCode nằm trong nội dung chuyển khoản
-                // Sử dụng .AsEnumerable() hoặc truy vấn cẩn thận để tránh lỗi dịch SQL nếu chuỗi phức tạp
-                var matchedOrder = await _context.Set<Order>()
-                    .FirstOrDefaultAsync(o => o.Status == "Pending" &&
-                                             tranDescription.Contains(o.OrderCode.ToUpper()));
-
-                if (matchedOrder != null)
-                {
-                    // 3. CẬP NHẬT TRẠNG THÁI (Đây là bước bạn đang thiếu)
-                    matchedOrder.Status = "Success";
-                    matchedOrder.OrderDate = DateTime.UtcNow;
-
-                    Console.WriteLine($"Khớp thành công đơn hàng: {matchedOrder.OrderCode}");
-                }
-            }
-
-            // 4. Lưu tất cả thay đổi vào DB
+            using var dbTransaction = await _context.Database.BeginTransactionAsync();
             try
             {
+                foreach (var transaction in request.data)
+                {
+                    string tranDescription = transaction.description?.ToUpper() ?? "";
+                    Console.WriteLine($"Đang xử lý giao dịch: {tranDescription} - Số tiền: {transaction.amount}");
+
+                    // 2. Tìm đơn hàng 'Pending' có OrderCode nằm trong nội dung chuyển khoản
+                    var matchedOrder = await _context.Set<Order>()
+                        .FirstOrDefaultAsync(o => o.Status == "Pending" &&
+                                                 tranDescription.Contains(o.OrderCode.ToUpper()));
+
+                    if (matchedOrder != null)
+                    {
+                        // FIX: Ki\u1ec3m tra t\u1ed3n kho v\u00e0 gi\u1ea3m stock khi xác nhận thanh toán
+                        var orderItems = await _context.OrderItems
+                            .Where(oi => oi.OrderId == matchedOrder.Id)
+                            .ToListAsync();
+
+                        foreach (var item in orderItems)
+                        {
+                            var variant = await _context.ProductVariants.FindAsync(item.VariantId);
+                            if (variant == null)
+                            {
+                                await dbTransaction.RollbackAsync();
+                                return BadRequest(new { error = 1, message = "Sản phẩm không tồn tại" });
+                            }
+
+                            if (variant.StockQuantity < item.Quantity)
+                            {
+                                await dbTransaction.RollbackAsync();
+                                return BadRequest(new { error = 1, message = "Không đủ tồn kho để xác nhận thanh toán" });
+                            }
+
+                            // Giảm stock
+                            variant.StockQuantity -= item.Quantity;
+                            _context.ProductVariants.Update(variant);
+                        }
+
+                        // 3. CẬP NHẬT TRẠNG THÁI
+                        matchedOrder.Status = "Success";
+                        matchedOrder.PaymentDate = DateTime.UtcNow;
+
+                        Console.WriteLine($"Khớp thành công đơn hàng: {matchedOrder.OrderCode}, giảm stock xong");
+                    }
+                }
+
+                // 4. Lưu tất cả thay đổi vào DB
                 await _context.SaveChangesAsync();
+                await dbTransaction.CommitAsync();
                 return Ok(new { error = 0, message = "Xử lý thành công" });
             }
             catch (Exception ex)
             {
+                await dbTransaction.RollbackAsync();
+                Console.WriteLine($"[Casso Webhook Error]: {ex.Message}");
                 return StatusCode(500, new { error = 1, message = "Lỗi Database: " + ex.Message });
             }
         }

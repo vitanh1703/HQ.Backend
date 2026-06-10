@@ -114,11 +114,48 @@ namespace HQ.Backend.Controllers
 
                     if (vnp_ResponseCode == "00") 
                     {
-                        var order = await _context.Orders.FindAsync(orderId);
-                        if (order != null && order.Status != "Success")
+                        using var transaction = await _context.Database.BeginTransactionAsync();
+                        try
                         {
-                            order.Status = "Success"; 
-                            await _context.SaveChangesAsync();
+                            var order = await _context.Orders.FindAsync(orderId);
+                            if (order != null && order.Status != "Success")
+                            {
+                                // FIX: Kiểm tra tồn kho và giảm stock khi thanh toán thành công
+                                var orderItems = await _context.OrderItems
+                                    .Where(oi => oi.OrderId == orderId)
+                                    .ToListAsync();
+
+                                foreach (var item in orderItems)
+                                {
+                                    var variant = await _context.ProductVariants.FindAsync(item.VariantId);
+                                    if (variant == null)
+                                    {
+                                        await transaction.RollbackAsync();
+                                        return BadRequest(new { RspCode = "98", Message = "Sản phẩm không tồn tại" });
+                                    }
+
+                                    if (variant.StockQuantity < item.Quantity)
+                                    {
+                                        await transaction.RollbackAsync();
+                                        return BadRequest(new { RspCode = "98", Message = "Không đủ tồn kho để xác nhận thanh toán" });
+                                    }
+
+                                    // Giảm stock
+                                    variant.StockQuantity -= item.Quantity;
+                                    _context.ProductVariants.Update(variant);
+                                }
+
+                                order.Status = "Success"; 
+                                order.PaymentDate = DateTime.UtcNow;
+                                await _context.SaveChangesAsync();
+                                await transaction.CommitAsync();
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            await transaction.RollbackAsync();
+                            Console.WriteLine($"[Payment Stock Deduction Error]: {ex.Message}");
+                            return StatusCode(500, new { RspCode = "99", Message = "Lỗi xử lý thanh toán" });
                         }
                     }
                     
